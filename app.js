@@ -1,4 +1,4 @@
-// app.js – Express 4 + Swagger UI (versión 1.2.0)
+// app.js – Express 4 + Swagger UI (v 1.3.1)
 require('dotenv').config();
 const express      = require('express');
 const swaggerJsdoc = require('swagger-jsdoc');
@@ -12,23 +12,23 @@ const PORT = process.env.PORT || 5578;
 const app  = express();
 
 app.use(express.json());
-app.use('/api/qr', qrRoutes);
-app.use('/api',    credRoutes);
+app.use('/api/qr',            qrRoutes);
+app.use('/api',               credRoutes);
 app.use('/api/webhookIzipay', notiRoutes);
 
-/* ───────────────────────── Swagger ───────────────────────── */
+/* ───────────────────────── Swagger spec ───────────────────────── */
 const swaggerSpec = swaggerJsdoc({
   definition: {
     openapi: '3.0.0',
     info: {
       title:   'Pasarela de pagos estática',
-      version: '1.2.0',
+      version: '1.3.1',
       description:
         'Mock para registrar/upsert comercios, generar QR, consultar estado y recibir webhook.'
     },
     components: {
       schemas: {
-        /* 1) Comercio */
+        /* -- Comercio ---------------------------------------------------- */
         ComercioPayload: {
           type: 'object',
           required: [
@@ -49,21 +49,20 @@ const swaggerSpec = swaggerJsdoc({
             telefono:   { type:'string', maxLength:15, example:'978548445' }
           }
         },
-        /* 2) Generar QR */
+        /* -- Generar QR --------------------------------------------------- */
         GenerarRequest: {
           type:'object',
           required:[
             'dominio','subdominio','local_id',
-            'monto','tipoMoneda','tipoProveedor','telefono'
+            'monto','tipoMoneda','tipoProveedor'
           ],
           properties:{
-            dominio:    { type:'string', example:'demo.com' },
-            subdominio: { type:'string', example:'default' },
-            local_id:   { type:'string', example:'12' },
-            monto:      { type:'number', example:1.00 },
-            tipoMoneda: { type:'string', enum:['soles','dolares'] },
-            tipoProveedor:{type:'string', example:'IziPay'},
-            telefono:   { type:'string', maxLength:15, example:'978548445' }
+            dominio:       { type:'string', example:'demo.com' },
+            subdominio:    { type:'string', example:'default' },
+            local_id:      { type:'string', example:'12' },
+            monto:         { type:'number', example:1.00 },
+            tipoMoneda:    { type:'string', enum:['soles','dolares'] },
+            tipoProveedor: { type:'string', example:'IziPay' }
           }
         },
         GenerarResponse:{
@@ -72,14 +71,14 @@ const swaggerSpec = swaggerJsdoc({
             datos:{type:'string'}, identificarQR:{type:'string'}, estado:{type:'string'}
           }
         },
-        /* 3) Estado */
+        /* -- Estado ------------------------------------------------------- */
         EstadoResponse:{
           type:'object',
           properties:{
             mensaje:{type:'string'}, estado:{type:'string'}
           }
         },
-        /* 4) Webhook notificación */
+        /* -- Webhook ------------------------------------------------------ */
         NotificacionQRBody:{
           type:'object',
           required:[
@@ -89,7 +88,11 @@ const swaggerSpec = swaggerJsdoc({
           properties:{
             identificarQR:{type:'string',maxLength:30},
             estado:{type:'string',enum:['Aprobado','Rechazado']},
-            codigo_estado:{type:'string',pattern:'^[0-9A-Z]{2}$'},
+            codigo_estado: {
+      type: 'string',
+      pattern: '^[0-9A-Z]{2}$',
+      example: '00'           // ← aquí el cambio
+    },
             monto:{type:'number'},
             moneda:{type:'integer',enum:[604,840]},
             fechaTxn:{type:'string',pattern:'^[0-9]{8}$'},
@@ -111,6 +114,8 @@ const swaggerSpec = swaggerJsdoc({
 });
 
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-/* ─────────────────────────────────────────────────────────── */
+/* ----------------------------------------------------------------------- */
 
-app.listen(PORT, () => console.log(`✅ http://localhost:${PORT} | 📄 /api-docs`));
+app.listen(PORT, () =>
+  console.log(`✅ http://localhost:${PORT} | 📄 /api-docs`)
+);

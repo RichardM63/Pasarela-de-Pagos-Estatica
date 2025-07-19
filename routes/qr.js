@@ -1,11 +1,11 @@
-// routes/qr.js – Generar y consultar QR (con telefono)
+// routes/qr.js – Genera QR y consulta estado
 const express = require('express');
 const moment  = require('moment');
 const { clientes, transacciones } = require('../data/storage');
 
 const router = express.Router();
 
-/* ---- Generar QR -------------------------------------------------------- */
+/* ───────────── 1. Generar QR ───────────── */
 /**
  * @swagger
  * /api/qr/generar:
@@ -15,21 +15,30 @@ const router = express.Router();
  *       required: true
  *       content:
  *         application/json:
- *           schema: { $ref: '#/components/schemas/GenerarRequest' }
+ *           schema:
+ *             $ref: '#/components/schemas/GenerarRequest'
  *     responses:
  *       200:
  *         description: QR generado
  *         content:
  *           application/json:
- *             schema: { $ref: '#/components/schemas/GenerarResponse' }
+ *             schema:
+ *               $ref: '#/components/schemas/GenerarResponse'
  */
 router.post('/generar', (req, res) => {
-  const { dominio, subdominio, local_id, monto, tipoMoneda, telefono } = req.body;
+  const {
+    dominio, subdominio, local_id,
+    monto, tipoMoneda, tipoProveedor
+  } = req.body;
 
   const cred = clientes.find(
-    x => x.dominio===dominio && x.subdominio===subdominio && x.local_id===local_id && x.activo
+    x =>
+      x.dominio === dominio &&
+      x.subdominio === subdominio &&
+      x.local_id === local_id &&
+      x.activo
   );
-  if (!cred) return res.status(400).json({ error:'Comercio no registrado o inactivo' });
+  if (!cred) return res.status(400).json({ error: 'Comercio no registrado o inactivo' });
 
   const monedaIso = { soles: 604, dolares: 840 }[tipoMoneda.toLowerCase()] ?? 604;
   const ts            = moment().format('YYMMDDHHmmssSS');
@@ -37,14 +46,21 @@ router.post('/generar', (req, res) => {
   const datosHex      = '89504E470D0A1A0A...';
 
   transacciones.push({
-    identificarQR, dominio, subdominio, local_id,
-    estado:'pendiente', datosHex, monto, monedaIso, telefono
+    identificarQR,
+    dominio,
+    subdominio,
+    local_id,
+    tipo_proveedor: tipoProveedor,
+    estado: 'pendiente',
+    datosHex,
+    monto,
+    monedaIso
   });
 
-  res.json({ datos: datosHex, identificarQR, estado:'pendiente' });
+  res.json({ datos: datosHex, identificarQR, estado: 'pendiente' });
 });
 
-/* ---- Consultar estado -------------------------------------------------- */
+/* ───────────── 2. Consultar estado ───────────── */
 /**
  * @swagger
  * /api/qr/estado:
@@ -67,23 +83,38 @@ router.post('/generar', (req, res) => {
  *         name: identificadorQR
  *         required: true
  *         schema: { type: string }
+ *       - in: query
+ *         name: tipo_proveedor
+ *         required: true
+ *         schema: { type: string }
  *     responses:
  *       200:
  *         description: Estado actualizado
  *         content:
  *           application/json:
- *             schema: { $ref: '#/components/schemas/EstadoResponse' }
+ *             schema:
+ *               $ref: '#/components/schemas/EstadoResponse'
  */
 router.get('/estado', (req, res) => {
-  const { dominio, subdominio, local_id, identificadorQR } = req.query;
-  const trx = transacciones.find(
-    t => t.identificarQR===identificadorQR && t.dominio===dominio &&
-         t.subdominio===subdominio && t.local_id===local_id
-  );
-  if (!trx) return res.status(404).json({ error:'Transacción no encontrada' });
+  const {
+    dominio, subdominio, local_id,
+    identificadorQR, tipo_proveedor
+  } = req.query;
 
-  trx.estado = 'pagado';
-  res.json({ mensaje:'Transacción pagada', estado: trx.estado });
+  const trx = transacciones.find(
+    t =>
+      t.identificarQR   === identificadorQR &&
+      t.dominio         === dominio &&
+      t.subdominio      === subdominio &&
+      t.local_id        === local_id &&
+      t.tipo_proveedor  === tipo_proveedor
+  );
+
+  if (!trx)
+    return res.status(404).json({ error: 'Transacción no encontrada' });
+
+  trx.estado = 'pagado'; // simulación
+  res.json({ mensaje: 'Transacción pagada', estado: trx.estado });
 });
 
 module.exports = router;
