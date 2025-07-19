@@ -1,0 +1,7 @@
+.ENV-EXAMPLE:
+# Puerto donde correrá el servidor
+PORT=5578
+
+# Conexión a MongoDB (local o Atlas)
+MONGO_URI=mongodb://localhost:27017/izipayqr
+
