@@ -1,35 +1,78 @@
-// routes/credenciales.js – upsert con telefono
+// routes/credenciales.js – Registro / actualización de credenciales
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
-const { clientes } = require('../data/storage');
+const { credenciales } = require('../data/storage');
 
 const router = express.Router();
 
 /**
  * @swagger
- * /api/agregarCredencialesCliente:
+ * /api/credencialesCliente:
  *   post:
- *     summary: "Alta o actualización de credenciales de comercio"
+ *     summary: Registra o actualiza credenciales (si ?id se envía, se actualiza)
+ *     parameters:
+ *       - in: query
+ *         name: id
+ *         description: ID de credencial existente a actualizar
+ *         schema:
+ *           type: string
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
- *           schema: { $ref: '#/components/schemas/ComercioPayload' }
+ *           schema:
+ *             $ref: '#/components/schemas/CredencialesRequest'
+ *           example:
+ *             dominio: demo.com
+ *             subdominio: default
+ *             local_id: "12"
+ *             tipoProveedor: IziPay
+ *             codComercio: "8756944"
+ *             apikey: D45B7C88-D7E2-4E9E-B170-3B66F4225BDD
+ *             idunico: IZIAPY_NEW
+ *             hashSecret: A1B2...
+ *             telefono: "978548445"
+ *             activo: true
  *     responses:
- *       200:
- *         description: Credenciales almacenadas
+ *       201:
+ *         description: Credencial creada/actualizada
+ *         content:
+ *           application/json:
+ *             example:
+ *               status: true
+ *               code: CREATED
+ *               message: Credenciales IziPay Registradas Correctamente
+ *               data:
+ *                 activo: true
  */
-router.post('/agregarCredencialesCliente', (req, res) => {
-  const c = req.body;
-  const idx = clientes.findIndex(
-    x => x.dominio===c.dominio && x.subdominio===c.subdominio && x.local_id===c.local_id
-  );
-  if (idx === -1) {
-    clientes.push({ ...c, cliente_id: uuidv4() });
+router.post('/credencialesCliente', (req, res) => {
+  const id   = req.query.id || null;
+  const body = req.body;
+
+  let mensaje;
+  if (id) {
+    const idx = credenciales.findIndex(c => c.id === id);
+    if (idx === -1) {
+      return res.status(404).json({
+        status: false,
+        code: 'NOT_FOUND',
+        message: 'ID no existe'
+      });
+    }
+    credenciales[idx] = { ...credenciales[idx], ...body };
+    mensaje = 'Credenciales IziPay Actualizadas Correctamente';
   } else {
-    clientes[idx] = { ...clientes[idx], ...c };
+    credenciales.push({ ...body, id: uuidv4() });
+    mensaje = 'Credenciales IziPay Registradas Correctamente';
   }
-  res.json({ mensaje:'Credenciales almacenadas' });
+
+  res.status(201).json({
+    status: true,
+    code: 'CREATED',
+    message: mensaje,
+    data: { activo: body.activo }
+  });
 });
 
 module.exports = router;
+

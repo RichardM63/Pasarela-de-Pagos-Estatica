@@ -1,10 +1,11 @@
-// app.js – Express 4 + Swagger UI (v 1.3.1)
+// app.js – Mock de pasarela de pagos (v 2.0.0)
 require('dotenv').config();
 const express      = require('express');
 const swaggerJsdoc = require('swagger-jsdoc');
 const swaggerUi    = require('swagger-ui-express');
 
-const qrRoutes   = require('./routes/qr');
+/* Rutas */
+const pagoRoutes = require('./routes/pago');
 const credRoutes = require('./routes/credenciales');
 const notiRoutes = require('./routes/notificacion');
 
@@ -12,99 +13,130 @@ const PORT = process.env.PORT || 5578;
 const app  = express();
 
 app.use(express.json());
-app.use('/api/qr',            qrRoutes);
-app.use('/api',               credRoutes);
-app.use('/api/webhookIzipay', notiRoutes);
+app.use('/api/pago',           pagoRoutes);            // generar / consultar
+app.use('/api',                credRoutes);            // credencialesCliente
+app.use('/api/webhookIzipay',  notiRoutes);            // webhook
 
-/* ───────────────────────── Swagger spec ───────────────────────── */
+/* ---------- Swagger --------------------------------------------------- */
 const swaggerSpec = swaggerJsdoc({
   definition: {
     openapi: '3.0.0',
     info: {
-      title:   'Pasarela de pagos estática',
-      version: '1.3.1',
+      title:   'Pasarela de Pagos Estática (Mock)',
+      version: '2.0.0',
       description:
-        'Mock para registrar/upsert comercios, generar QR, consultar estado y recibir webhook.'
+        'Servicio mock para registrar/actualizar credenciales, generar pagos (QR, link, etc.), consultar estado y procesar notificación Izipay.'
     },
     components: {
       schemas: {
-        /* -- Comercio ---------------------------------------------------- */
-        ComercioPayload: {
+        /* 🔐 Credenciales */
+        CredencialesRequest: {
           type: 'object',
           required: [
-            'dominio','subdominio','local_id',
-            'codComercio','apikey','idunico','pbkdf2_secret',
-            'activo','tipoProveedor','telefono'
+            'dominio','subdominio','local_id','tipoProveedor',
+            'codComercio','apikey','idunico','hashSecret',
+            'telefono','activo'
           ],
           properties: {
-            dominio:    { type:'string', example:'demo.com' },
-            subdominio: { type:'string', example:'default' },
-            local_id:   { type:'string', example:'12' },
-            codComercio:{ type:'string', pattern:'^[0-9]{1,15}$', example:'8756944' },
-            apikey:     { type:'string', example:'D45B7C88-D7E2-4E9E-B170-3B66F4225BDD' },
-            idunico:    { type:'string', example:'IZIAPY_NEW' },
-            pbkdf2_secret:{type:'string', minLength:64, example:'A1B2...' },
-            activo:     { type:'boolean', example:true },
-            tipoProveedor:{type:'string', example:'IziPay'},
-            telefono:   { type:'string', maxLength:15, example:'978548445' }
-          }
-        },
-        /* -- Generar QR --------------------------------------------------- */
-        GenerarRequest: {
-          type:'object',
-          required:[
-            'dominio','subdominio','local_id',
-            'monto','tipoMoneda','tipoProveedor'
-          ],
-          properties:{
             dominio:       { type:'string', example:'demo.com' },
             subdominio:    { type:'string', example:'default' },
             local_id:      { type:'string', example:'12' },
+            tipoProveedor: { type:'string', example:'IziPay' },
+            codComercio:   { type:'string', example:'8756944' },
+            apikey:        { type:'string', example:'D45B7C88-D7E2-4E9E-B170-3B66F4225BDD' },
+            idunico:       { type:'string', example:'IZIAPY_NEW' },
+            hashSecret:    { type:'string', example:'A1B2...' },
+            telefono:      { type:'string', example:'978548445' },
+            activo:        { type:'boolean', example:true }
+          }
+        },
+
+        /* 🧾 Generar pago */
+        GenerarPagoRequest: {
+          type: 'object',
+          required: [
+            'dominio','subdominio','localId',
+            'monto','tipoMoneda','tipoProveedor','canalDePago'
+          ],
+          properties: {
+            dominio:       { type:'string', example:'demo.com' },
+            subdominio:    { type:'string', example:'defaultdemo.com' },
+            localId:       { type:'string', example:'12' },
             monto:         { type:'number', example:1.00 },
-            tipoMoneda:    { type:'string', enum:['soles','dolares'] },
-            tipoProveedor: { type:'string', example:'IziPay' }
+            tipoMoneda:    { type:'string', example:'PEN' },
+            tipoProveedor: { type:'string', example:'IZIPAY' },
+            canalDePago:   { type:'string', example:'qr' }
           }
         },
-        GenerarResponse:{
+        GenerarPagoResponse: {
+          type: 'object',
+          properties: {
+            status:  { type:'boolean', example:true },
+            code:    { type:'string',  example:'CREATED' },
+            message: { type:'string',  example:'Pago generado correctamente' },
+            data:    {
+              type:'object',
+              properties:{
+                identificador:{type:'string',example:'8756944…'},
+                monto:{type:'number',example:1.00},
+                tipoMoneda:{type:'string',example:'PEN'},
+                qrUrl:{type:'string'},
+                estado:{type:'string',example:'Pendiente'},
+                createdAt:{type:'string'},
+                updatedAt:{type:'string'},
+                __v:{type:'number'}
+              }
+            }
+          }
+        },
+
+        /* 📤 Consultar estado */
+        ConsultarPagoResponse: {
           type:'object',
           properties:{
-            datos:{type:'string'}, identificarQR:{type:'string'}, estado:{type:'string'}
+            status:{type:'boolean',example:true},
+            code:{type:'string',example:'OK'},
+            message:{type:'string',example:'Pago No realizado'},
+            data:{
+              type:'object',
+              properties:{
+                estado:{type:'string',example:'Pendiente'}
+              }
+            }
           }
         },
-        /* -- Estado ------------------------------------------------------- */
-        EstadoResponse:{
-          type:'object',
-          properties:{
-            mensaje:{type:'string'}, estado:{type:'string'}
-          }
-        },
-        /* -- Webhook ------------------------------------------------------ */
-        NotificacionQRBody:{
+
+        /* 🔔 Webhook Izipay */
+        NotificacionQRBody: {
           type:'object',
           required:[
-            'identificarQR','estado','codigo_estado',
-            'monto','moneda','fechaTxn','horaTxn','numPedido'
+            'identificarQR','estado','codigo_estado','monto',
+            'tipoMoneda','fechaTxn','horaTxn','numPedido','canalDePago'
           ],
           properties:{
-            identificarQR:{type:'string',maxLength:30},
+            identificarQR:{type:'string'},
             estado:{type:'string',enum:['Aprobado','Rechazado']},
-            codigo_estado: {
-      type: 'string',
-      pattern: '^[0-9A-Z]{2}$',
-      example: '00'           // ← aquí el cambio
-    },
+            codigo_estado:{type:'string',example:'00'},
             monto:{type:'number'},
-            moneda:{type:'integer',enum:[604,840]},
-            fechaTxn:{type:'string',pattern:'^[0-9]{8}$'},
-            horaTxn:{type:'string',pattern:'^[0-9]{6}$'},
-            numPedido:{type:'string',maxLength:20}
+            tipoMoneda:{type:'string',example:'PEN'},
+            fechaTxn:{type:'string'},
+            horaTxn:{type:'string'},
+            numPedido:{type:'string'},
+            canalDePago:{type:'string',example:'qr'}
           }
         },
         NotificacionResponse:{
           type:'object',
           properties:{
-            estado:{type:'string',example:'0000'},
-            mensaje:{type:'string',example:'Notificación registrada'}
+            status:{type:'boolean',example:true},
+            code:{type:'string',example:'CREATED'},
+            message:{type:'string',example:'Notificación registrada correctamente'},
+            data:{
+              type:'object',
+              properties:{
+                idTransaccion:{type:'integer',example:99999}
+              }
+            }
           }
         }
       }
@@ -114,7 +146,7 @@ const swaggerSpec = swaggerJsdoc({
 });
 
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-/* ----------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------- */
 
 app.listen(PORT, () =>
   console.log(`✅ http://localhost:${PORT} | 📄 /api-docs`)
